@@ -9,3 +9,7 @@ openai_credentials:
   api_key: ""
 run_headless: false
 min_listing_length_months: 6
+
+# Optional (should work without these in most cases)
+geckodriver_path: ""
+firefox_path: ""
