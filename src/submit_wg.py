@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
-import os
-import random
+import logging
 import time
 
 from selenium import webdriver
@@ -18,6 +17,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from src import OpenAIHelper
 
+from selenium.webdriver.firefox.service import Service
+
 
 def get_element(driver, by, id):
     ignored_exceptions = (
@@ -25,6 +26,7 @@ def get_element(driver, by, id):
         NoSuchElementException,
         ElementNotInteractableException,
     )
+    remove_cookies_popup(driver)
     try:
         wait = WebDriverWait(driver, 10, poll_frequency=1)
         element = wait.until(EC.visibility_of_element_located((by, id)))
@@ -37,6 +39,7 @@ def get_element(driver, by, id):
 
 
 def click_button(driver, by, id):
+    remove_cookies_popup(driver)
     driver.implicitly_wait(2)
     try:
         element = get_element(driver, by, id)
@@ -44,6 +47,19 @@ def click_button(driver, by, id):
         element.click()
     except ElementNotInteractableException:
         raise ElementNotInteractableException()
+
+
+def click_at_coordinates(driver, x, y):
+    remove_cookies_popup(driver)
+    driver.implicitly_wait(2)
+    action = ActionChains(driver)
+    action.move_by_offset(x, y).click().perform()
+
+
+def remove_cookies_popup(driver):
+    divs_to_remove = driver.find_elements(By.XPATH, "//div[@id='cmpbox' or @id='cmpbox2']")
+    for div in divs_to_remove:
+        driver.execute_script("arguments[0].remove();", div)
 
 
 def send_keys(driver, by, id, send_str):
@@ -110,40 +126,39 @@ def gpt_get_keyword(config, logger) -> str:
         return ""
     return response_json.get("keyword", "")
 
-
 def submit_app(config, logger):
-    chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument("--log-level=3")
+    firefox_options = webdriver.FirefoxOptions()
 
     # add the argument to reuse an existing tab
     if config["run_headless"]:
-        chrome_options.headless = True
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--reuse-tab")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        firefox_options.add_argument("--headless")
+
+    if config["firefox_path"]:
+        firefox_options.binary_location = config["firefox_path"]
 
     # create the ChromeDriver object and log
     try:
-        service_log_path = "chromedriver.log"
-        service_args = ["--verbose"]
-        driver = webdriver.Chrome(
-            "/usr/bin/chromedriver",
-            options=chrome_options,
-            service_args=service_args,
-            service_log_path=service_log_path,
-        )
+        if config["geckodriver_path"] != "":
+            driver = webdriver.Firefox(options=firefox_options, service=Service(config["geckodriver_path"]))
+        else:
+            driver = webdriver.Firefox(options=firefox_options)
+
         # mainly when using screen
         driver.maximize_window()
         driver.get("https://www.wg-gesucht.de/nachricht-senden" + config["ref"])
-    except:
-        logger.log(
-            "Chrome crashed! You might be trying to run it without a screen in terminal?"
-        )
-        driver.quit()
-        return False
+    except Exception as e:
+        logger.log(logging.ERROR, "Browser crashed! You might be trying to run it without a screen in terminal?")
+        raise e
+
+    with open("source.html", "w", encoding="utf-8") as file:
+        file.write("")
+        file.write(driver.page_source)
 
     # accept cookies button
-    click_button(driver, By.XPATH, "//*[contains(text(), 'Accept all')]")
+    # click_button(driver, By.XPATH, "//*[contains(text(), 'Akzeptieren')]")
+    # instead of accepting cookies, just remove cookie popup,
+    # as "Akzeptieren" doesn't show on headless Firefox on Linux for some reason
+    remove_cookies_popup(driver)
 
     # my account button
     click_button(driver, By.XPATH, "//*[contains(text(), 'Mein Konto')]")
@@ -162,6 +177,13 @@ def submit_app(config, logger):
     click_button(driver, By.ID, "login_submit")
     logger.info("Logged in.")
 
+    remove_cookies_popup(driver)
+
+    # remove lightbox div that blocks attachments
+    divs_to_remove = driver.find_elements(By.XPATH, "//div[@class='lightbox']")
+    for div in divs_to_remove:
+        driver.execute_script("arguments[0].remove();", div)
+
     # occasionally wg-gesucht gives you advice on how to stay safe.
     try:
         click_button(driver, By.ID, "sicherheit_bestaetigung")
@@ -170,7 +192,7 @@ def submit_app(config, logger):
 
     driver.implicitly_wait(2)
 
-    # checks if its possible to sent message to listing.
+    # checks if a message has already been sent previously to listing.
     try:
         _ = get_element(driver, By.ID, "message_timestamp")
         logger.info("Message has already been sent previously. Will skip this offer.")
@@ -215,18 +237,33 @@ def submit_app(config, logger):
 
     # read message from a file
     try:
-        with open(message_file, "r") as file:
+        with open(message_file, "r", encoding="utf-8") as file:
             message = str(file.read())
-        message = message.replace("receipient", config["user_name"].split(" ")[0])
-        if "keyword" in locals() and keyword != "":
-            message = f"{keyword}\n\n" + message
+        message = message.replace("recipient", config["user_name"].split(" ")[0])
         text_area.send_keys(message)
     except:
         logger.info(f"{message_file} file not found!")
         driver.quit()
         return False
 
+    driver.implicitly_wait(1)
+
+    # accept cookies button
+    click_button(driver, By.CLASS_NAME, "btn.wgg_white.pull-right.mr10")
+
+    # open the file attachment selection
+    click_button(driver, By.CLASS_NAME, "cursor-pointer.conversation-attachment-option.attach_file")
+
+    # select (attach) the document named "SCHUFA-BonitaetsCheck.pdf"
+    click_button(driver, By.XPATH, "//*[contains(text(), 'SCHUFA-BonitaetsCheck.pdf')]")
+
+    # close attachment
+    click_at_coordinates(driver, 100, 100)
+    click_at_coordinates(driver, 100, 100)
+
     driver.implicitly_wait(2)
+
+    time.sleep(3)
 
     try:
         click_button(
