@@ -44,9 +44,9 @@ def main(config):
         if not os.path.exists(past_listings_file_name):
             prev_listings = []
         else:
-            with open(past_listings_file_name, "r") as msgs:
+            with open(past_listings_file_name, "r", encoding="utf-8", errors="ignore") as msgs:
                 prev_listings = msgs.readlines()
-        
+
         # get current listings
         url = config["url"]
         listing_getter = ListingGetter(url)
@@ -73,8 +73,8 @@ def main(config):
                 min_rental_length_months = config["min_listing_length_months"]
                 if listing_length_months >= 0 and listing_length_months < min_rental_length_months:
                     logger.info(
-                                f"Rental period of {listing_length_months} months is below required {min_rental_length_months} months. Skipping ..."
-                                )
+                        f"Rental period of {listing_length_months} months is below required {min_rental_length_months} months. Skipping ..."
+                    )
                     continue
 
                 # check if already messaged listing in the past
@@ -84,19 +84,21 @@ def main(config):
                     continue
 
                 # get listing text and store in config for later processing
-                listing_info_getter = ListingInfoGetter(ref)
-                listing_text = listing_info_getter.get_listing_text()
-                config["listing_text"] = listing_text
+                # This is currently commented out, as it sometimes throws errors
+                # listing_info_getter = ListingInfoGetter(ref)
+                # listing_text = listing_info_getter.get_listing_text()
+                # config["listing_text"] = listing_text
 
                 # use selenium to retrieve dynamically loaded info and send message
                 sending_successful = submit_wg.submit_app(config, logger)
 
                 # if new message sent -> store information about listing
-                if sending_successful:
-                    listing_info_getter.save_listing_text(
-                        "listing_texts.json", listing_text
-                    )
-                
+                # This is currently commented out, as it sometimes throws errors
+                # if sending_successful:
+                #    listing_info_getter.save_listing_text(
+                #        "listing_texts.json", listing_text
+                #    )
+
                 # add listing to past_listings.txt
                 with open(past_listings_file_name, "a") as msgs:
                     msgs.write(f"{listings_sent_identifier}")
