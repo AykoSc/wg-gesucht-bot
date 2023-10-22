@@ -150,10 +150,6 @@ def submit_app(config, logger):
         logger.log(logging.ERROR, "Browser crashed! You might be trying to run it without a screen in terminal?")
         raise e
 
-    with open("source.html", "w", encoding="utf-8") as file:
-        file.write("")
-        file.write(driver.page_source)
-
     # accept cookies button
     # click_button(driver, By.XPATH, "//*[contains(text(), 'Akzeptieren')]")
     # instead of accepting cookies, just remove cookie popup,
