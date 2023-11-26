@@ -1,14 +1,12 @@
-messages:
-  german: "message_de.txt"
-  english: "message_en.txt"
+message_file: "message.txt"
 wg_gesucht_credentials:
   email: "my-email@email.com"
   password: "password1234"
 url: ""
-openai_credentials:
-  api_key: ""
 run_headless: false
 min_listing_length_months: 6
+attach_schufa: false
+custom_condition: "user_name not in 'John Doe'"
 
 # Optional (should work without these in most cases)
 geckodriver_path: ""

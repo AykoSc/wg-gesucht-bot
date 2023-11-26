@@ -1,17 +1,10 @@
-import json
 import logging
 import os.path
 import time
-from subprocess import call
 
 import yaml
 
-from src import (
-    submit_wg,
-    ListingGetter,
-    ListingInfoGetter,
-
-)
+from src import ListingGetter, submit_wg
 
 logging.basicConfig(
     format="[%(asctime)s | %(levelname)s] - %(message)s ",
@@ -25,13 +18,12 @@ logger = logging.getLogger("bot")
 def main(config):
     """
     Operations:
-     - Get newest listings
+     - Get the newest listings
      - Compares them with previous listing (if available)
      - For all new listings not present in previous listings:
         - Checks rental length of listing
-        - Checks if listing is reupload by comparing to user_name and address
-        - Gets listing text -> can be used for OpenAI further down the line
-        - Attemps to submit an application
+        - Checks if listing is reuploaded by comparing to user_name and address
+        - Attempts to submit an application
         - Adds listing to 'past_listings.txt'
     """
 
@@ -62,16 +54,29 @@ def main(config):
                 # unpack listing dict
                 ref = listing["ref"]
                 listing_length_months = listing["rental_length_months"]
+                user_name = listing["user_name"]
+                address = listing["address"]
+                wg_type = listing["wg_type"]
+                rental_length_months = listing["rental_length_months"]
 
                 # add to config for submit_app function
                 config["ref"] = ref
-                config["user_name"] = listing["user_name"]
-                config["address"] = listing["address"]
+                config["user_name"] = user_name
+                config["address"] = address
                 logger.info(f"Trying to send message to: {listing}")
+
+                # check if custom condition is not met. An example custom condition would be "user_name != 'John Doe'".
+                try:
+                    custom_condition = config["custom_condition"]
+                    if custom_condition and not eval(custom_condition):
+                        logger.info(f"Custom condition not met: {custom_condition}. Skipping ...")
+                        continue
+                except:
+                    pass
 
                 # check rental length, if below min -> skip this listing
                 min_rental_length_months = config["min_listing_length_months"]
-                if listing_length_months >= 0 and listing_length_months < min_rental_length_months:
+                if 0 <= listing_length_months < min_rental_length_months:
                     logger.info(
                         f"Rental period of {listing_length_months} months is below required {min_rental_length_months} months. Skipping ..."
                     )
@@ -80,24 +85,11 @@ def main(config):
                 # check if already messaged listing in the past
                 listings_sent_identifier = f"{listing['user_name']}: {listing['address']}\n"
                 if listings_sent_identifier in prev_listings:
-                    logger.info("Listing in 'prev_listings' file, therfore contacted in the past! Skipping ...")
+                    logger.info("Listing in 'prev_listings' file, therefore contacted in the past! Skipping ...")
                     continue
 
-                # get listing text and store in config for later processing
-                # This is currently commented out, as it sometimes throws errors
-                # listing_info_getter = ListingInfoGetter(ref)
-                # listing_text = listing_info_getter.get_listing_text()
-                # config["listing_text"] = listing_text
-
                 # use selenium to retrieve dynamically loaded info and send message
-                sending_successful = submit_wg.submit_app(config, logger)
-
-                # if new message sent -> store information about listing
-                # This is currently commented out, as it sometimes throws errors
-                # if sending_successful:
-                #    listing_info_getter.save_listing_text(
-                #        "listing_texts.json", listing_text
-                #    )
+                submit_wg.submit_app(config, logger)
 
                 # add listing to past_listings.txt
                 with open(past_listings_file_name, "a") as msgs:

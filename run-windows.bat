@@ -1,3 +1,7 @@
 @echo off
-python main.py
+
+call venv\Scripts\activate
+
+python wg-gesucht.py
+
 pause
