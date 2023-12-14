@@ -2,11 +2,11 @@ message_file: "message.txt"
 wg_gesucht_credentials:
   email: "my-email@email.com"
   password: "password1234"
-url: ""
-run_headless: false
+url: ""  # Example (useful to set sorting to "Eintragsdatum"):: https://www.wg-gesucht.de/wg-zimmer-und-1-zimmer-wohnungen-und-wohnungen-und-haeuser-in-Berlin.8.0+1+2+3.1.0.html?offer_filter=1&city_id=8&sort_column=0&sort_order=0&noDeact=1&radLat=52.51628045&radLng=13.377701882994323&categories[]=0&categories[]=1&categories[]=2&categories[]=3&sMin=12&rMax=451&radAdd=Brandenburger+Tor+1%2C+Berlin%2C+Deutschland%2C+10117&radDis=6000&wgSea=2&wgAge=22&exc=2
+run_headless: true
 min_listing_length_months: 6
 attach_schufa: false
-custom_condition: "user_name not in 'John Doe'"
+custom_condition: "user_name not in 'John Doe'"  # Python expression
 
 # Optional (should work without these in most cases)
 geckodriver_path: ""

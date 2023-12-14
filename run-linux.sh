@@ -1,3 +1,3 @@
 source env/bin/activate
 
-python3 wg-gesucht.py
+python3 main.py

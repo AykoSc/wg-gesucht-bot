@@ -2,6 +2,6 @@
 
 call venv\Scripts\activate
 
-python wg-gesucht.py
+python main.py
 
 pause

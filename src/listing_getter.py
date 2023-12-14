@@ -30,7 +30,7 @@ class ListingGetter:
         for p_tag in p_tags:
             if "Captchas" in p_tag.get_text():
                 # Log the occurrence of "Captchas" within <p> tags
-                logger.critical("Captcha detected. Retrying.")
+                logger.critical("Captcha detected. Retrying...")
                 break
 
         # get all listing elements by looking for 'liste-details-ad-#####'
@@ -115,10 +115,3 @@ class ListingGetter:
                 int(end_month) - int(start_month)
         )
         return date_diff
-
-
-if __name__ == "__main__":
-    url = "https://www.wg-gesucht.de/wg-zimmer-in-Berlin.8.0.1.0.html?csrf_token=c9280a89ddcd56ac55c721ab68f7c5fd64996ca7&offer_filter=1&city_id=8&sort_column=0&sort_order=0&noDeact=1&categories%5B%5D=0&rent_types%5B%5D=2&rent_types%5B%5D=1&rent_types%5B%5D=2%2C1&sMin=14&ot%5B%5D=126&ot%5B%5D=132&ot%5B%5D=85079&ot%5B%5D=151&ot%5B%5D=163&ot%5B%5D=85086&ot%5B%5D=165&wgSea=2&wgMnF=2&wgArt%5B%5D=6&wgArt%5B%5D=12&wgArt%5B%5D=11&wgArt%5B%5D=19&wgArt%5B%5D=22&wgSmo=2&exc=2&img_only=1"
-    listings_getter = ListingGetter(url)
-    info_dict = listings_getter.get_all_infos()
-    pprint.pprint(info_dict)
