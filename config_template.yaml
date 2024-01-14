@@ -6,6 +6,7 @@ url: ""  # Example (useful to set sorting to "Eintragsdatum"):: https://www.wg-g
 run_headless: true
 min_listing_length_months: 6
 attach_schufa: false
+openai_key: ""  # Optional, if you want to use GPT to send more individualized messages
 custom_condition: "user_name not in 'John Doe'"  # Python expression
 
 # Optional (should work without these in most cases)

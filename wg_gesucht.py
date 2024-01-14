@@ -1,6 +1,7 @@
 import logging
 import os.path
 import time
+import os
 
 import yaml
 
@@ -29,6 +30,9 @@ def main(config):
 
     # initialise old listings for later
     old_listings = dict()
+
+    # set OpenAI key
+    os.environ["OPENAI_API_KEY"] = config["openai_key"]
 
     while True:
         # read previously sent messages:

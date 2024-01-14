@@ -10,6 +10,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from selenium.webdriver.firefox.service import Service
 
+from openai import OpenAI
+
+from src import ListingInfoGetter
+
 
 def get_element(driver, by, id):
     remove_cookies_popup(driver)
@@ -139,6 +143,40 @@ def submit_app(config, logger):
         logger.info(f"{message_file} file not found!")
         driver.quit()
         return False
+
+    # use GPT to check ads for "if you've read this write X"
+    if config["openai_key"] != "":
+        getter = ListingInfoGetter(config["ref"])
+        text = getter.get_listing_text()
+
+        client = OpenAI()
+        completion = client.completions.create(
+            model="gpt-3.5-turbo-instruct",
+            max_tokens=2000,
+            prompt=
+            f"""
+        Du bist dabei, eine Nachricht auf WG-Gesucht an "{config['user_name']}" über ein Angebot mit folgender Beschreibung zu senden:
+
+        "
+        {text}
+        "
+
+
+        Deine Nachricht lautet:
+        "
+        {message}
+        "
+
+
+        Sorge dafür, dass die Nachricht entsprechend der Beschreibung angepasst ist. So wird in WG-Beschreibungen oft nach einer Antwort auf irgendeine Frage, oder auch nach dem Schreiben eines bestimmten Wortes gefragt.
+        Zusätzlich muss die Nachricht ein wenig personalisiert werden durch kleine Anpassungen.
+
+        Gib als Antwort nur die Nachricht an.
+        """
+        )
+
+        message = completion.choices[0].text
+        text_area.send_keys(message)
 
     if config["attach_schufa"]:
         # open the attachment popup
