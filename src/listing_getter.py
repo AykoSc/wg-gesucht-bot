@@ -8,7 +8,7 @@ logging.basicConfig(
     format="[%(asctime)s | %(levelname)s] - %(message)s ",
     level=logging.INFO,
     datefmt="%Y-%m-%d_%H:%M:%S",
-    handlers=[logging.FileHandler("../debug.log"), logging.StreamHandler()],
+    handlers=[logging.FileHandler("data/debug.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger("bot")
 
@@ -16,7 +16,7 @@ logger = logging.getLogger("bot")
 class ListingGetter:
     def __init__(self, url):
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser = p.firefox.launch(headless=True)
             page = browser.new_page()
             page.goto(url, timeout=0)  # millisecond timeout
             html = page.inner_html("#main_column")
@@ -34,7 +34,7 @@ class ListingGetter:
                 break
 
         # get all listing elements by looking for 'liste-details-ad-#####'
-        self.listings = soup.find_all("div", id=re.compile("^liste-details-ad-\d+"))
+        self.listings = soup.find_all("div", id=re.compile(r"^liste-details-ad-\d+"))
 
     def get_all_infos(self):
         info_dict = {}
@@ -83,7 +83,7 @@ class ListingGetter:
         for listing in self.listings:
             element = listing.find("div", {"class": "col-xs-11"})
             text = element.find("span").getText()
-            parts = [part.strip() for part in re.split("\||\n", text) if part.strip() != ""]
+            parts = [part.strip() for part in re.split(r"\||\n", text) if part.strip() != ""]
             wg_type.append(parts[0])
             address.append(", ".join(parts[::-1][:-1]))
         return address, wg_type

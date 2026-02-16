@@ -8,7 +8,7 @@ logging.basicConfig(
     format="[%(asctime)s | %(levelname)s] - %(message)s ",
     level=logging.INFO,
     datefmt="%Y-%m-%d_%H:%M:%S",
-    handlers=[logging.FileHandler("../debug.log"), logging.StreamHandler()],
+    handlers=[logging.FileHandler("data/debug.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger("bot")
 

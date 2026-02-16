@@ -1,8 +1,6 @@
-selenium
 playwright
 openai
 pyyaml
 beautifulsoup4
 requests
 lxml
-openai

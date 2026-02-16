@@ -1,0 +1,10 @@
+services:
+  wg-gesucht-bot:
+    build: .
+    container_name: wg-gesucht-bot
+    restart: always
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1

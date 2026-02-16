@@ -14,14 +14,10 @@ class ListingInfoGetter:
 
     def get_listing_text(self):
         soup = BeautifulSoup(self.r, "lxml")
-        ad_description = soup.find("div", {"id": "ad_description_text"}).find_all(
-            ["p", "h3"]
-        )
-        text = []
-        for chunk in ad_description:
-            text.extend([chunk.getText().strip(), "\n\n"])
-        text = "".join(text)
-        return text
+        ad_description = soup.find("div", {"id": "ad_description_text"})
+        if ad_description:
+            return ad_description.get_text(separator="\n\n", strip=True)
+        return ""
 
     @staticmethod
     def save_listing_text(file_name: str, text: str):

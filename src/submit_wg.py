@@ -1,210 +1,188 @@
 import logging
 import time
-
-from selenium import webdriver
-from selenium.common.exceptions import ElementNotInteractableException, TimeoutException
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-
-from selenium.webdriver.firefox.service import Service
-
+from playwright.sync_api import sync_playwright, Page
 from openai import OpenAI
-
 from src import ListingInfoGetter
 
-
-def get_element(driver, by, id):
-    remove_cookies_popup(driver)
+def remove_cookies_popup(page: Page):
     try:
-        wait = WebDriverWait(driver, 10, poll_frequency=1)
-        element = wait.until(EC.visibility_of_element_located((by, id)))
-    except TimeoutException:
-        wait = WebDriverWait(driver, 30, poll_frequency=1)
-        element = wait.until(EC.presence_of_element_located((by, id)))
-    if isinstance(element, list):
-        element = element[0]
-    return element
-
-
-def click_button(driver, by, id):
-    remove_cookies_popup(driver)
-    try:
-        element = get_element(driver, by, id)
-        element.click()
-    except ElementNotInteractableException:
-        raise ElementNotInteractableException()
-
-
-def click_at_coordinates(driver, x, y):
-    remove_cookies_popup(driver)
-    action = ActionChains(driver)
-    action.move_by_offset(x, y).click().perform()
-
-
-def remove_cookies_popup(driver):
-    divs_to_remove = driver.find_elements(By.XPATH, "//div[@id='cmpbox' or @id='cmpbox2']")
-    for div in divs_to_remove:
-        driver.execute_script("arguments[0].remove();", div)
-
-
-def send_keys(driver, by, id, send_str):
-    try:
-        element = get_element(driver, by, id)
-        element.send_keys(send_str)
-    except ElementNotInteractableException:
-        raise ElementNotInteractableException(f"Could not enter: {send_str}")
-
-
-def build_driver(config, logger):
-    firefox_options = webdriver.FirefoxOptions()
-
-    # add the argument to reuse an existing tab
-    if config["run_headless"]:
-        firefox_options.add_argument("--headless")
-
-    if config["firefox_path"]:
-        firefox_options.binary_location = config["firefox_path"]
-
-    # create the Geckodriver object and log
-    try:
-        if config["geckodriver_path"] != "":
-            driver = webdriver.Firefox(options=firefox_options, service=Service(config["geckodriver_path"]))
-        else:
-            driver = webdriver.Firefox(options=firefox_options)
-
-        # mainly when using screen
-        driver.maximize_window()
-        driver.get("https://www.wg-gesucht.de/nachricht-senden" + config["ref"])
-
-        return driver
-    except Exception as e:
-        logger.log(logging.ERROR, "Browser crashed! You might be trying to run it without a screen in terminal?")
-        raise e
-
-
-def submit_app(config, logger):
-    driver = build_driver(config, logger)
-
-    # remove cookie popup, as "Akzeptieren" doesn't show on headless Firefox on Linux for some reason
-    remove_cookies_popup(driver)
-
-    # click my account button
-    click_button(driver, By.XPATH, "//*[contains(text(), 'Mein Konto')]")
-
-    # enter email
-    send_keys(driver, By.ID, "login_email_username", config["wg_gesucht_credentials"]["email"])
-
-    # enter password
-    send_keys(driver, By.ID, "login_password", config["wg_gesucht_credentials"]["password"])
-
-    # click login button
-    click_button(driver, By.ID, "login_submit")
-    logger.info("Logged in.")
-
-    # remove the occasional cookie popup again
-    remove_cookies_popup(driver)
-
-    # remove lightbox div that blocks attachments
-    divs_to_remove = driver.find_elements(By.XPATH, "//div[@class='lightbox']")
-    for div in divs_to_remove:
-        driver.execute_script("arguments[0].remove();", div)
-
-    # accept the occasional advice gives on how to stay safe
-    try:
-        click_button(driver, By.ID, "sicherheit_bestaetigung")
+        # More aggressive removal of various cookie consent IDs and classes
+        # Added #sec_advice which is the "security advice" modal intercepting clicks
+        page.evaluate("""() => {
+            const selectors = ['#cmpbox', '#cmpbox2', '.cmpboxBG', '#cmpv6container', '.qc-cmp2-container', '#sec_advice', '.modal-backdrop'];
+            selectors.forEach(s => {
+                document.querySelectorAll(s).forEach(el => el.remove());
+            });
+            // Also enable scrolling if it was disabled by the popup
+            document.body.style.overflow = 'auto';
+            document.documentElement.style.overflow = 'auto';
+        }""")
     except:
         pass
 
-    # checks if a message has already been sent previously to listing
+def remove_lightbox(page: Page):
     try:
-        _ = get_element(driver, By.ID, "message_timestamp")
-        logger.info("Message has already been sent previously. Will skip this offer.")
-        driver.quit()
-        return False
+        page.evaluate("() => { document.querySelectorAll('.lightbox, .modal-backdrop, .modal-open').forEach(el => el.remove()); }")
     except:
-        logger.info("No message has been sent. Will send now...")
+        pass
 
-    logger.info(f"Sending to: {config['user_name']}, {config['address']}.")
-
-    text_area = get_element(driver, By.ID, "message_input")
-    if text_area:
-        text_area.clear()
-
-    # read message from the file
-    message_file = config["message_file"]
+def build_context(p, config, logger):
+    # Use Firefox as requested for the "Firefox only" project
+    browser = p.firefox.launch(headless=config.get("run_headless", True))
+    context = browser.new_context()
+    
+    # Add a script to remove banners and modals as soon as they appear
+    context.add_init_script("""
+        setInterval(() => {
+            ['#cmpbox', '#cmpbox2', '.cmpboxBG', '#cmpv6container', '.qc-cmp2-container', '#sec_advice', '.modal-backdrop'].forEach(s => {
+                document.querySelectorAll(s).forEach(el => el.remove());
+            });
+            // Ensure document is clickable
+            if (document.body.classList.contains('modal-open')) {
+                document.body.classList.remove('modal-open');
+                document.body.style.overflow = 'auto';
+            }
+        }, 500);
+    """)
+    
+    page = context.new_page()
+    
+    # Standard WG-Gesucht window size
+    page.set_viewport_size({"width": 1920, "height": 1080})
+    
     try:
-        with open(message_file, "r", encoding="utf-8") as file:
-            message = str(file.read())
-        message = message.replace("recipient", config["user_name"].split(" ")[0])
+        page.goto("https://www.wg-gesucht.de/nachricht-senden" + config["ref"], timeout=60000)
+        return browser, page
+    except Exception as e:
+        logger.error("Browser failed to load page!")
+        browser.close()
+        raise e
 
-        # use GPT to check ads for "if you've read this write X"
-        if config["openai_key"] != "":
-            getter = ListingInfoGetter(config["ref"])
-            text = getter.get_listing_text()
+def submit_app(config, logger):
+    with sync_playwright() as p:
+        browser, page = build_context(p, config, logger)
+        
+        try:
+            # remove cookie popup
+            remove_cookies_popup(page)
 
-            client = OpenAI()
-            completion = client.completions.create(
-                model="gpt-3.5-turbo-instruct",
-                max_tokens=2000,
-                prompt=
-                f"""
-                Du bist dabei, eine Nachricht auf WG-Gesucht an "{config['user_name']}" über ein Angebot mit folgender Beschreibung zu senden:
+            # check my account button - using force=True to bypass interception
+            # try multiple times if the login input doesn't appear
+            for i in range(3):
+                page.click("text=Mein Konto", force=True)
+                try:
+                    page.wait_for_selector("#login_email_username", state="visible", timeout=5000)
+                    break 
+                except:
+                    if i == 2:
+                        logger.error("Login modal did not appear after 3 attempts.")
+                        browser.close()
+                        return False
+                    logger.warning(f"Login modal not visible, retry {i+1}...")
+                    remove_cookies_popup(page)
 
-                "
-                {text}
-                "
+            # enter credentials
+            page.fill("#login_email_username", config["wg_gesucht_credentials"]["email"])
+            page.fill("#login_password", config["wg_gesucht_credentials"]["password"])
 
+            # click login button and wait for redirect
+            page.click("#login_submit")
+            
+            # wait for message input to be visible again (means we are back on the app page)
+            try:
+                page.wait_for_selector("#message_input", timeout=10000)
+                logger.info("Logged in and back on submission page.")
+            except:
+                logger.warning("Timed out waiting for message input after login. Proceeding anyway...")
 
-                Deine Nachricht lautet:
-                "
-                {message}
-                "
+            # remove the occasional cookie popup again
+            remove_cookies_popup(page)
+            remove_lightbox(page)
 
+            # accept the occasional advice gives on how to stay safe
+            try:
+                page.click("#sicherheit_bestaetigung", timeout=2000)
+            except:
+                pass
 
-                Sorge dafür, dass die Nachricht entsprechend der Beschreibung angepasst ist. So wird in WG-Beschreibungen oft nach einer Antwort auf irgendeine Frage, oder auch nach dem Schreiben eines bestimmten Wortes gefragt.
-                Zusätzlich muss die Nachricht ein wenig personalisiert werden durch kleine Anpassungen.
+            # checks if a message has already been sent previously to listing
+            if page.locator("#message_timestamp").is_visible(timeout=2000):
+                logger.info("Message has already been sent previously. Will skip this offer.")
+                browser.close()
+                return False
 
-                Gib als Antwort nur die Nachricht an.
-                """
-            )
+            logger.info(f"Sending to: {config['user_name']}, {config['address']}.")
 
-            message = completion.choices[0].text
+            # get message area locator
+            text_area = page.locator("#message_input")
 
-        text_area.send_keys(message)
-    except:
-        logger.info(f"{message_file} file not found!")
-        driver.quit()
-        return False
+            # read message from config
+            try:
+                message = config.get("message", "")
+                if not message:
+                    logger.error("No 'message' found in config!")
+                    browser.close()
+                    return False
+                
+                message = message.replace("recipient", config["user_name"].split(" ")[0])
 
-    if config["attach_schufa"]:
-        # open the attachment popup
-        click_button(driver, By.CLASS_NAME, "btn.wgg_white.pull-right.mr10")
+                # use GPT to check ads for "if you've read this write X"
+                if config.get("openai_key"):
+                    getter = ListingInfoGetter(config["ref"])
+                    text = getter.get_listing_text()
 
-        # at the popup, open the file attachment selection
-        click_button(driver, By.CLASS_NAME, "cursor-pointer.conversation-attachment-option.attach_file")
+                    client = OpenAI(api_key=config["openai_key"])
+                    completion = client.completions.create(
+                        model="gpt-3.5-turbo-instruct",
+                        max_tokens=2000,
+                        prompt=f"""
+                        Du bist dabei, eine Nachricht auf WG-Gesucht an "{config['user_name']}" über ein Angebot mit folgender Beschreibung zu senden:
+                        "{text}"
+                        Deine Nachricht lautet:
+                        "{message}"
+                        Sorge dafür, dass die Nachricht entsprechend der Beschreibung angepasst ist.
+                        Gib als Antwort nur die Nachricht an.
+                        """
+                    )
+                    message = completion.choices[0].text
 
-        # select (attach) the document named "SCHUFA-BonitaetsCheck.pdf"
-        click_button(driver, By.XPATH, "//*[contains(text(), 'SCHUFA-BonitaetsCheck.pdf')]")
+                # fill message with a small delay for stability
+                text_area.click(force=True)
+                text_area.fill(message)
+                page.wait_for_timeout(500)
+            except Exception as e:
+                logger.error(f"Error handling message: {e}")
+                browser.close()
+                return False
 
-        # close attachment
-        click_at_coordinates(driver, 100, 100)
-        click_at_coordinates(driver, 100, 100)
+            if config.get("attach_schufa"):
+                # open the attachment popup
+                page.click(".btn.wgg_white.pull-right.mr10")
+                # at the popup, open the file attachment selection
+                page.click(".cursor-pointer.conversation-attachment-option.attach_file")
+                # select the document named "SCHUFA-BonitaetsCheck.pdf"
+                page.get_by_text("SCHUFA-BonitaetsCheck.pdf").click()
+                # close attachment (click outside)
+                page.mouse.click(100, 100)
 
-    time.sleep(3)
+            # wait a bit for stability
+            page.wait_for_timeout(2000)
 
-    try:
-        click_button(
-            driver,
-            By.XPATH,
-            "//button[@data-ng-click='submit()' or contains(.,'Nachricht senden')]",
-        )
-        logger.info(f">>>> Message sent to: {config['ref']} <<<<")
-        time.sleep(2)
-        driver.quit()
-        return True
-    except ElementNotInteractableException:
-        logger.info("Cannot find submit button!")
-        driver.quit()
-        return False
+            # click send button
+            try:
+                # find and click submit button - searching for Senden or Nachricht senden, following the class from screenshot
+                submit_button = page.locator("button.conversation_send_button, button:has-text('Senden'), button:has-text('Nachricht senden')").first
+                submit_button.click(force=True)
+                logger.info(f">>>> Message sent to: {config['ref']} <<<<")
+                page.wait_for_timeout(2000)
+                browser.close()
+                return True
+            except:
+                logger.error("Cannot find submit button!")
+                browser.close()
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error during submission: {e}")
+            browser.close()
+            return False

@@ -1,4 +1,3 @@
-message_file: "message.txt"
 wg_gesucht_credentials:
   email: "my-email@email.com"
   password: "password1234"
@@ -9,6 +8,10 @@ attach_schufa: false
 openai_key: ""  # Optional, if you want to use GPT to send more individualized messages
 custom_condition: "user_name not in 'John Doe'"  # Python expression
 
-# Optional (should work without these in most cases)
-geckodriver_path: ""
-firefox_path: ""
+message: |
+  Hello recipient,
+  
+  I am interested in your WG.
+  
+  Best,
+  User

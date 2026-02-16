@@ -7,11 +7,15 @@ import yaml
 
 from src import ListingGetter, submit_wg
 
+# ensure data directory exists for logs and history
+if not os.path.exists("data"):
+    os.makedirs("data")
+
 logging.basicConfig(
     format="[%(asctime)s | %(levelname)s] - %(message)s ",
     level=logging.INFO,
     datefmt="%Y-%m-%d_%H:%M:%S",
-    handlers=[logging.FileHandler("../debug.log"), logging.StreamHandler()],
+    handlers=[logging.FileHandler("data/debug.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger("bot")
 
@@ -36,7 +40,7 @@ def main(config):
 
     while True:
         # read previously sent messages:
-        past_listings_file_name = "past_listings.txt"
+        past_listings_file_name = "data/past_listings.txt"
         if not os.path.exists(past_listings_file_name):
             prev_listings = []
         else:
@@ -79,6 +83,7 @@ def main(config):
                     pass
 
                 # check rental length, if below min -> skip this listing
+                # -1 means "unbefristet" (indefinite), so we keep those.
                 min_rental_length_months = config["min_listing_length_months"]
                 if 0 <= listing_length_months < min_rental_length_months:
                     logger.info(
