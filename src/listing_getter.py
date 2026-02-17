@@ -1,8 +1,11 @@
-from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
+import pprint
 import re
 import logging
-import pprint
+from datetime import datetime
+from typing import List
+
+from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 
 logging.basicConfig(
     format="[%(asctime)s | %(levelname)s] - %(message)s ",
@@ -16,6 +19,7 @@ logger = logging.getLogger("bot")
 class ListingGetter:
     def __init__(self, url):
         with sync_playwright() as p:
+            # Using Firefox for consistency with our previous session, though upstream uses Chromium
             browser = p.firefox.launch(headless=True)
             page = browser.new_page()
             page.goto(url, timeout=0)  # millisecond timeout
@@ -42,24 +46,60 @@ class ListingGetter:
         user_names = self.get_users()
         addresses, wg_types = self.get_address_wg()
         rental_lengths_months = self.get_rental_length_months()
+        rental_starts = self.get_rental_start()
+        is_verifiziertes_unternehmen = self.check_verifiziertes_unternehmen()
 
         # ensure all list are the same length
-        lists = [refs, user_names, addresses, wg_types, rental_lengths_months]
+        lists = [
+            refs,
+            user_names,
+            addresses,
+            wg_types,
+            rental_lengths_months,
+            rental_starts,
+            is_verifiziertes_unternehmen,
+        ]
         it = iter(lists)
         the_len = len(next(it))
         if not all(len(l) == the_len for l in it):
             raise ValueError("Not all lists have the same length!")
 
         # write dict for all listings
-        for i, (ref, user_name, address, wg_type, rental_length_months) in enumerate(
-                zip(refs, user_names, addresses, wg_types, rental_lengths_months)):
-
+        for i, (
+            ref,
+            user_name,
+            address,
+            wg_type,
+            rental_length_months,
+            rental_start,
+            verifiziertes_unternehmen,
+        ) in enumerate(
+            zip(
+                refs,
+                user_names,
+                addresses,
+                wg_types,
+                rental_lengths_months,
+                rental_starts,
+                is_verifiziertes_unternehmen,
+            )
+        ):
             # skip promotes offers from letting agencies
             if "\n" in user_name:
                 continue
+            # skip sponsored offers
+            if verifiziertes_unternehmen:
+                continue
 
-            listing_dict = {"ref": ref, "user_name": user_name, "address": address, "wg_type": wg_type,
-                            "rental_length_months": rental_length_months}
+            listing_dict = {
+                "ref": ref,
+                "user_name": user_name,
+                "address": address,
+                "wg_type": wg_type,
+                "rental_length_months": rental_length_months,
+                "rental_start": rental_start,
+            }
+
             info_dict[i] = listing_dict
         return info_dict
 
@@ -83,7 +123,9 @@ class ListingGetter:
         for listing in self.listings:
             element = listing.find("div", {"class": "col-xs-11"})
             text = element.find("span").getText()
-            parts = [part.strip() for part in re.split(r"\||\n", text) if part.strip() != ""]
+            parts = [
+                part.strip() for part in re.split(r"\||\n", text) if part.strip() != ""
+            ]
             wg_type.append(parts[0])
             address.append(", ".join(parts[::-1][:-1]))
         return address, wg_type
@@ -93,9 +135,40 @@ class ListingGetter:
         for listing in self.listings:
             element = listing.find("div", {"class": "col-xs-5 text-center"})
             text = element.getText()
-            start_end = [part.strip() for part in re.split("-|\n", text) if part.strip() != ""]
-            rental_length_months.append(self._get_rental_length_months("-".join(start_end)))
+            start_end = [
+                part.strip() for part in re.split(r"-|\n", text) if part.strip() != ""
+            ]
+            rental_length_months.append(
+                self._get_rental_length_months("-".join(start_end))
+            )
         return rental_length_months
+
+    def get_rental_start(self):
+        rental_starts = list()
+        for listing in self.listings:
+            element = listing.find("div", {"class": "col-xs-5 text-center"})
+            text = element.getText()
+            start_end = [
+                part.strip() for part in re.split(r"-|\n", text) if part.strip() != ""
+            ]
+            rental_starts.append(self._get_rental_start(start_end[0]))
+        return rental_starts
+
+    def check_verifiziertes_unternehmen(self) -> List[int]:
+        is_verifiziertes_unternehmen = list()
+        for listing in self.listings:
+            status = 0
+            element = listing.find("a", {"class": "campaign_click label_verified ml5"})
+            if element:
+                text = element.text.lower()
+                if "unternehmen" in text:
+                    status = 1
+            is_verifiziertes_unternehmen.append(status)
+        return is_verifiziertes_unternehmen
+
+    @staticmethod
+    def _get_rental_start(date: str) -> datetime:
+        return datetime.strptime(date, "%d.%m.%Y")
 
     @staticmethod
     def _get_rental_length_months(date_range_str: str) -> int:
@@ -112,6 +185,13 @@ class ListingGetter:
 
         # get time difference in months
         date_diff = (int(end_year) - int(start_year)) * 12 + (
-                int(end_month) - int(start_month)
+            int(end_month) - int(start_month)
         )
         return date_diff
+
+
+if __name__ == "__main__":
+    url = "https://www.wg-gesucht.de/wg-zimmer-in-Berlin.8.0.1.0.html?csrf_token=c9280a89ddcd56ac55c721ab68f7c5fd64996ca7&offer_filter=1&city_id=8&sort_column=0&sort_order=0&noDeact=1&categories%5B%5D=0&rent_types%5B%5D=2&rent_types%5B%5D=1&rent_types%5B%5D=2%2C1&sMin=14&ot%5B%5D=126&ot%5B%5D=132&ot%5B%5D=85079&ot%5B%5D=151&ot%5B%5D=163&ot%5B%5D=85086&ot%5B%5D=165&wgSea=2&wgMnF=2&wgArt%5B%5D=6&wgArt%5B%5D=12&wgArt%5B%5D=11&wgArt%5B%5D=19&wgArt%5B%5D=22&wgSmo=2&exc=2&img_only=1"
+    listings_getter = ListingGetter(url)
+    info_dict = listings_getter.get_all_infos()
+    pprint.pprint(info_dict)

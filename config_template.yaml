@@ -8,6 +8,12 @@ attach_schufa: false
 openai_key: ""  # Optional, if you want to use GPT to send more individualized messages
 custom_condition: "user_name not in 'John Doe'"  # Python expression
 
+rental_start:
+  year: 2026
+  month: 3
+  day: 1
+  buffer_days: 14
+
 message: |
   Hello recipient,
   

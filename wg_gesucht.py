@@ -1,11 +1,14 @@
+import datetime
 import logging
 import os.path
+import pprint
+import sys
 import time
 import os
 
 import yaml
 
-from src import ListingGetter, submit_wg
+from src import ListingGetter, ListingInfoGetter, submit_wg
 
 # ensure data directory exists for logs and history
 if not os.path.exists("data"):
@@ -36,7 +39,8 @@ def main(config):
     old_listings = dict()
 
     # set OpenAI key
-    os.environ["OPENAI_API_KEY"] = config["openai_key"]
+    if config.get("openai_key"):
+        os.environ["OPENAI_API_KEY"] = config["openai_key"]
 
     while True:
         # read previously sent messages:
@@ -55,7 +59,9 @@ def main(config):
 
         # get diff: new - old listings
         old_values = old_listings.values()
-        diff_dict = {k: v for k, v in enumerate(new_listings.values()) if v not in old_values}
+        diff_dict = {
+            k: v for k, v in enumerate(new_listings.values()) if v not in old_values
+        }
         if diff_dict:
             logger.info(f"Found {len(diff_dict)} new listings.")
             for listing in diff_dict.values():
@@ -65,7 +71,7 @@ def main(config):
                 user_name = listing["user_name"]
                 address = listing["address"]
                 wg_type = listing["wg_type"]
-                rental_length_months = listing["rental_length_months"]
+                rental_start = listing["rental_start"]
 
                 # add to config for submit_app function
                 config["ref"] = ref
@@ -75,12 +81,35 @@ def main(config):
 
                 # check if custom condition is not met. An example custom condition would be "user_name != 'John Doe'".
                 try:
-                    custom_condition = config["custom_condition"]
+                    custom_condition = config.get("custom_condition")
                     if custom_condition and not eval(custom_condition):
                         logger.info(f"Custom condition not met: {custom_condition}. Skipping ...")
                         continue
-                except:
+                except Exception as e:
+                    logger.warning(f"Error evaluating custom condition: {e}")
                     pass
+
+                # check rental start date
+                if "rental_start" in config:
+                    desired_rental_params = config["rental_start"]
+                    desired_rental_start = datetime.datetime(
+                        desired_rental_params["year"],
+                        desired_rental_params["month"],
+                        desired_rental_params["day"],
+                    )
+                    earliest_allowable_start = desired_rental_start - datetime.timedelta(
+                        days=desired_rental_params["buffer_days"]
+                    )
+                    latest_allowable_start = desired_rental_start + datetime.timedelta(
+                        days=desired_rental_params["buffer_days"]
+                    )
+                    if (earliest_allowable_start > rental_start) or (
+                        rental_start > latest_allowable_start
+                    ):
+                        logger.info(
+                            f"Rental start ({rental_start}) is outside of the desired start range. Skipping ..."
+                        )
+                        continue
 
                 # check rental length, if below min -> skip this listing
                 # -1 means "unbefristet" (indefinite), so we keep those.
@@ -92,13 +121,26 @@ def main(config):
                     continue
 
                 # check if already messaged listing in the past
-                listings_sent_identifier = f"{listing['user_name']}: {listing['address']}\n"
+                listings_sent_identifier = (
+                    f"{user_name}: {address}\n"
+                )
                 if listings_sent_identifier in prev_listings:
                     logger.info("Listing in 'prev_listings' file, therefore contacted in the past! Skipping ...")
                     continue
 
-                # use selenium to retrieve dynamically loaded info and send message
-                submit_wg.submit_app(config, logger)
+                # get listing text and store in config for later processing
+                listing_info_getter = ListingInfoGetter(ref)
+                listing_text = listing_info_getter.get_listing_text()
+                config["listing_text"] = listing_text
+
+                # use playwright to retrieve dynamically loaded info and send message
+                sending_successful = submit_wg.submit_app(config, logger)
+
+                # if new message sent -> store information about listing
+                if sending_successful:
+                    listing_info_getter.save_listing_text(
+                        "data/listing_texts.json", listing_text
+                    )
 
                 # add listing to past_listings.txt
                 with open(past_listings_file_name, "a") as msgs:
