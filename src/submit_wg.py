@@ -1,42 +1,11 @@
-<<<<<<< HEAD
 import logging
-=======
-# -*- coding: utf-8 -*-
-import json
->>>>>>> upstream/main
 import time
 import re
 from playwright.sync_api import sync_playwright, Page
 from openai import OpenAI
 from src import ListingInfoGetter
 
-<<<<<<< HEAD
 def remove_cookies_popup(page: Page):
-=======
-from selenium import webdriver
-from selenium.common.exceptions import (
-    ElementNotInteractableException,
-    NoSuchElementException,
-    StaleElementReferenceException,
-    TimeoutException,
-)
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-
-from src import OpenAIHelper
-
-
-def get_element(driver, by, id):
-    ignored_exceptions = (
-        StaleElementReferenceException,
-        NoSuchElementException,
-        ElementNotInteractableException,
-    )
-    remove_cookies_popup(driver)
->>>>>>> upstream/main
     try:
         # More aggressive removal of various cookie consent IDs and classes
         # Added #sec_advice which is the "security advice" modal intercepting clicks
@@ -52,20 +21,12 @@ def get_element(driver, by, id):
     except:
         pass
 
-<<<<<<< HEAD
 def remove_lightbox(page: Page):
-=======
-
-def click_button(driver, by, id):
-    remove_cookies_popup(driver)
-    driver.implicitly_wait(2)
->>>>>>> upstream/main
     try:
         page.evaluate("() => { document.querySelectorAll('.lightbox, .modal-backdrop, .modal-open').forEach(el => el.remove()); }")
     except:
         pass
 
-<<<<<<< HEAD
 def build_context(p, config, logger):
     # Use Firefox as requested for the "Firefox only" project
     browser = p.firefox.launch(headless=config.get("run_headless", True))
@@ -97,98 +58,6 @@ def build_context(p, config, logger):
         logger.error("Browser failed to load page!")
         browser.close()
         raise e
-=======
-
-def click_at_coordinates(driver, x, y):
-    remove_cookies_popup(driver)
-    driver.implicitly_wait(2)
-    action = ActionChains(driver)
-    action.move_by_offset(x, y).click().perform()
-
-
-def remove_cookies_popup(driver):
-    divs_to_remove = driver.find_elements(
-        By.XPATH, "//div[@id='cmpbox' or @id='cmpbox2']"
-    )
-    for div in divs_to_remove:
-        driver.execute_script("arguments[0].remove();", div)
-
-
-def send_keys(driver, by, id, send_str):
-    driver.implicitly_wait(2)
-    try:
-        element = get_element(driver, by, id)
-        element.send_keys(send_str)
-    except ElementNotInteractableException:
-        raise ElementNotInteractableException(f"Could not enter: {send_str}")
-
-
-def gpt_get_language(config, logger) -> str:
-    openai = OpenAIHelper(config["openai_credentials"]["api_key"])
-    listing_text = config["listing_text"]
-
-    if len(listing_text) < 200:
-        listing_text = listing_text[10:]
-    else:
-        listing_text = listing_text[10:200]
-
-    # build prompt
-    prompt_lst = []
-    prompt_lst.append("What language is this:\n")
-    prompt_lst.append(listing_text)
-    prompt_lst.append(" Please only respond in a JSON style format like ")
-    prompt_lst.append('{"language": "<your-answer>"}, '),
-    prompt_lst.append(
-        "where your answer should be a single word which is the language."
-    )
-    prompt = "".join(prompt_lst)
-
-    # pass prompt into openai helper method
-    response = str(openai.generate(prompt)).strip()
-    # response = '{"language": "German"}'
-    logger.info(f"GPT response: {response}")
-
-    # try to load json from string
-    try:
-        response_json = json.loads(response)
-    except ValueError:
-        logger.info("Response was not valid JSON format.")
-        return ""
-    return response_json.get("language", "")
-
-
-def gpt_get_keyword(config, logger) -> str:
-    openai = OpenAIHelper(config["openai_credentials"]["api_key"])
-    listing_text = config["listing_text"]
-
-    prompt_lst = []
-    prompt_lst.append(
-        "Check if there exists a keyword in the text, to show I read the text.\n"
-    )
-    prompt_lst.append(
-        'This keyword is most likely wrapped in quotation marks like: "".\n'
-    )
-    prompt_lst.append(
-        "Note however that not all texts will include such a keyword. Here is the text:\n"
-    )
-    prompt_lst.append(f"'{listing_text}'")
-    prompt_lst.append("\nPlease only respond in JSON format like ")
-    prompt_lst.append('{"keyword": "<your-keyword>"}, ')
-    prompt_lst.append(
-        "where your <your-keyword> is the keyword from the text that you found."
-    )
-    prompt = "".join(prompt_lst)
-
-    response = str(openai.generate(prompt)).strip()
-    logger.info(f"GPT response: {response}")
-    try:
-        response_json = json.loads(response)
-    except ValueError:
-        logger.info("Response was not valid JSON format.")
-        return ""
-    return response_json.get("keyword", "")
-
->>>>>>> upstream/main
 
 def submit_app(config, logger):
     with sync_playwright() as p:
@@ -203,7 +72,6 @@ def submit_app(config, logger):
             login_button = page.get_by_role("button", name="Mein Konto").or_(page.get_by_text("Mein Konto")).first
             login_email = page.locator("#login_email_username")
 
-<<<<<<< HEAD
             for i in range(3):
                 login_button.click(force=True)
                 try:
@@ -220,33 +88,6 @@ def submit_app(config, logger):
             # enter credentials
             login_email.fill(config["wg_gesucht_credentials"]["email"])
             page.locator("#login_password").fill(config["wg_gesucht_credentials"]["password"])
-=======
-    # create the ChromeDriver object and log
-    try:
-        service_log_path = "chromedriver.log"
-        service_args = ["--verbose"]
-        driver = webdriver.Chrome(
-            service=Service(executable_path=config["chromedriver_path"]),
-            options=chrome_options,
-            service_args=service_args,
-            service_log_path=service_log_path,
-        )
-        if not config["run_headless"]:
-            driver.maximize_window()
-        driver.get("https://www.wg-gesucht.de/nachricht-senden" + config["ref"])
-    except Exception as e:
-        logger.info(
-            "Chrome crashed! You might be trying to run it without a screen in terminal?"
-        )
-        raise e
-
-    # # accept cookies button
-    # click_button(driver, By.XPATH, "//*[contains(text(), 'Accept all')]")
-    # click_button(driver, By.XPATH, "//*[contains(text(), 'Akzeptieren')]")
-    # instead of accepting cookies, just remove cookie popup,
-    # as "Akzeptieren" doesn't show on headless Firefox on Linux for some reason
-    remove_cookies_popup(driver)
->>>>>>> upstream/main
 
             # click login button and wait for redirect
             page.locator("#login_submit").click()
@@ -276,22 +117,7 @@ def submit_app(config, logger):
                 browser.close()
                 return False
 
-<<<<<<< HEAD
             logger.info(f"Sending to: {config['user_name']}, {config['address']}.")
-=======
-    remove_cookies_popup(driver)
-
-    # remove lightbox div that blocks attachments
-    divs_to_remove = driver.find_elements(By.XPATH, "//div[@class='lightbox']")
-    for div in divs_to_remove:
-        driver.execute_script("arguments[0].remove();", div)
-
-    # occasionally wg-gesucht gives you advice on how to stay safe.
-    try:
-        click_button(driver, By.ID, "sicherheit_bestaetigung")
-    except:
-        logger.info("No security check.")
->>>>>>> upstream/main
 
             # get message area locator - using more robust multiple selectors
             text_area = page.locator("#message_input, textarea[name='message'], textarea#message_input, .conversation-input textarea").first
@@ -308,23 +134,29 @@ def submit_app(config, logger):
 
                 # use GPT to check ads for "if you've read this write X"
                 if config.get("openai_key"):
-                    getter = ListingInfoGetter(config["ref"])
-                    text = getter.get_listing_text()
+                    # The listing_text should already be in config if wg_gesucht.py follows upstream logic
+                    text = config.get("listing_text")
+                    if not text:
+                        getter = ListingInfoGetter(config["ref"])
+                        text = getter.get_listing_text()
 
                     client = OpenAI(api_key=config["openai_key"])
-                    completion = client.completions.create(
-                        model="gpt-3.5-turbo-instruct",
+                    completion = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
                         max_tokens=2000,
-                        prompt=f"""
-                        Du bist dabei, eine Nachricht auf WG-Gesucht an "{config['user_name']}" über ein Angebot mit folgender Beschreibung zu senden:
-                        "{text}"
-                        Deine Nachricht lautet:
-                        "{message}"
-                        Sorge dafür, dass die Nachricht entsprechend der Beschreibung angepasst ist.
-                        Gib als Antwort nur die Nachricht an.
-                        """
+                        messages=[
+                            {"role": "system", "content": "Du bist ein hilfreicher Assistent."},
+                            {"role": "user", "content": f"""
+Du bist dabei, eine Nachricht auf WG-Gesucht an "{config['user_name']}" über ein Angebot mit folgender Beschreibung zu senden:
+"{text}"
+Deine Nachricht lautet:
+"{message}"
+Sorge dafür, dass die Nachricht entsprechend der Beschreibung angepasst ist.
+Gib als Antwort nur die Nachricht an.
+"""}
+                        ]
                     )
-                    message = completion.choices[0].text
+                    message = completion.choices[0].message.content
 
                 # fill message with a small delay for stability
                 # wait for the text area to be attached and visible
@@ -361,7 +193,6 @@ def submit_app(config, logger):
             # wait a bit for stability
             page.wait_for_timeout(2000)
 
-<<<<<<< HEAD
             # click send button
             try:
                 # find and click submit button - searching for Senden or Nachricht senden, following the class from screenshot
@@ -380,34 +211,3 @@ def submit_app(config, logger):
             logger.error(f"Error during submission: {e}")
             browser.close()
             return False
-=======
-    # read message from a file
-    try:
-        with open(message_file, "r") as file:
-            message = str(file.read())
-        message = message.replace("receipient", config["user_name"].split(" ")[0])
-        # if "keyword" in locals() and keyword != "":
-        #     message = f"{keyword}\n\n" + message
-        text_area.send_keys(message)
-    except:
-        logger.info(f"{message_file} file not found!")
-        driver.quit()
-        return False
-
-    driver.implicitly_wait(2)
-
-    try:
-        click_button(
-            driver,
-            By.XPATH,
-            "//button[@data-ng-click='submit()' or contains(.,'Nachricht senden')]",
-        )
-        logger.info(f">>>> Message sent to: {config['ref']} <<<<")
-        time.sleep(2)
-        driver.quit()
-        return True
-    except ElementNotInteractableException:
-        logger.info("Cannot find submit button!")
-        driver.quit()
-        return False
->>>>>>> upstream/main
