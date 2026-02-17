@@ -37,4 +37,6 @@ docker compose logs -f
 ## Acknowledgements
 Thanks to the code by [nickirk](https://github.com/nickirk/immo), which served as a starting point for this project.
 
+Also thanks to [jonasdieker/wg-gesucht-bot](https://github.com/jonasdieker/wg-gesucht-bot) for the initial implementation of the bot.
+
 Note: This fork has been completely rewritten for Playwright and Docker for better stability and ease of use.
