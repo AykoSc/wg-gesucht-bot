@@ -1,5 +1,6 @@
 import logging
 import time
+import re
 from playwright.sync_api import sync_playwright, Page
 from openai import OpenAI
 from src import ListingInfoGetter
@@ -68,10 +69,13 @@ def submit_app(config, logger):
 
             # check my account button - using force=True to bypass interception
             # try multiple times if the login input doesn't appear
+            login_button = page.get_by_role("button", name="Mein Konto").or_(page.get_by_text("Mein Konto")).first
+            login_email = page.locator("#login_email_username")
+
             for i in range(3):
-                page.click("text=Mein Konto", force=True)
+                login_button.click(force=True)
                 try:
-                    page.wait_for_selector("#login_email_username", state="visible", timeout=5000)
+                    login_email.wait_for(state="visible", timeout=5000)
                     break 
                 except:
                     if i == 2:
@@ -82,15 +86,15 @@ def submit_app(config, logger):
                     remove_cookies_popup(page)
 
             # enter credentials
-            page.fill("#login_email_username", config["wg_gesucht_credentials"]["email"])
-            page.fill("#login_password", config["wg_gesucht_credentials"]["password"])
+            login_email.fill(config["wg_gesucht_credentials"]["email"])
+            page.locator("#login_password").fill(config["wg_gesucht_credentials"]["password"])
 
             # click login button and wait for redirect
-            page.click("#login_submit")
+            page.locator("#login_submit").click()
             
             # wait for message input to be visible again (means we are back on the app page)
             try:
-                page.wait_for_selector("#message_input", timeout=10000)
+                page.locator("#message_input, textarea[name='message'], textarea#message_input, .conversation-input textarea").first.wait_for(state="visible", timeout=10000)
                 logger.info("Logged in and back on submission page.")
             except:
                 logger.warning("Timed out waiting for message input after login. Proceeding anyway...")
@@ -101,7 +105,9 @@ def submit_app(config, logger):
 
             # accept the occasional advice gives on how to stay safe
             try:
-                page.click("#sicherheit_bestaetigung", timeout=2000)
+                # Using a more robust locator for the confirmation button
+                safety_confirm = page.locator("#sicherheit_bestaetigung").or_(page.get_by_role("button", name=re.compile("bestätigen|verstanden", re.IGNORECASE)))
+                safety_confirm.click(timeout=2000)
             except:
                 pass
 
@@ -113,8 +119,8 @@ def submit_app(config, logger):
 
             logger.info(f"Sending to: {config['user_name']}, {config['address']}.")
 
-            # get message area locator
-            text_area = page.locator("#message_input")
+            # get message area locator - using more robust multiple selectors
+            text_area = page.locator("#message_input, textarea[name='message'], textarea#message_input, .conversation-input textarea").first
 
             # read message from config
             try:
@@ -147,7 +153,8 @@ def submit_app(config, logger):
                     message = completion.choices[0].text
 
                 # fill message with a small delay for stability
-                text_area.click(force=True)
+                # wait for the text area to be attached and visible
+                text_area.wait_for(state="visible", timeout=10000)
                 text_area.fill(message)
                 page.wait_for_timeout(500)
             except Exception as e:
@@ -157,13 +164,25 @@ def submit_app(config, logger):
 
             if config.get("attach_schufa"):
                 # open the attachment popup
-                page.click(".btn.wgg_white.pull-right.mr10")
+                # Trying to find the attachment button by text or icon classes
+                attachment_btn = page.get_by_role("button", name=re.compile("anhang|anhängen", re.IGNORECASE)).or_(page.locator(".btn.wgg_white.pull-right.mr10")).first
+                attachment_btn.click()
+                
                 # at the popup, open the file attachment selection
-                page.click(".cursor-pointer.conversation-attachment-option.attach_file")
+                file_opt = page.get_by_text(re.compile("datei|file", re.IGNORECASE)).or_(page.locator(".attach_file")).first
+                file_opt.wait_for(state="visible")
+                file_opt.click()
+                
                 # select the document named "SCHUFA-BonitaetsCheck.pdf"
-                page.get_by_text("SCHUFA-BonitaetsCheck.pdf").click()
-                # close attachment (click outside)
-                page.mouse.click(100, 100)
+                schufa_doc = page.get_by_text("SCHUFA-BonitaetsCheck.pdf")
+                schufa_doc.wait_for(state="visible")
+                schufa_doc.click()
+                
+                # close attachment (click outside or press Escape)
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(500)
+                # Fallback click if Escape didn't work (some modals are stubborn)
+                page.mouse.click(10, 10)
 
             # wait a bit for stability
             page.wait_for_timeout(2000)
@@ -171,7 +190,7 @@ def submit_app(config, logger):
             # click send button
             try:
                 # find and click submit button - searching for Senden or Nachricht senden, following the class from screenshot
-                submit_button = page.locator("button.conversation_send_button, button:has-text('Senden'), button:has-text('Nachricht senden')").first
+                submit_button = page.locator("button.conversation_send_button, #send_message, #message_send_button, button[name='send'], button:has-text('Senden'), button:has-text('Nachricht senden')").first
                 submit_button.click(force=True)
                 logger.info(f">>>> Message sent to: {config['ref']} <<<<")
                 page.wait_for_timeout(2000)
